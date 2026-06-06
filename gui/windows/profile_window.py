@@ -4,19 +4,21 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 import os
+from basedir import resource_path
+from gui.windows.base_window import BaseWindow
 from services.currency_service import CurrencyService
 from services.shop_service import ShopService
 from services.achievement_service import AchievementService  # нужно добавить метод get_user_achievements
 
-class ProfileWindow(QWidget):
+class ProfileWindow(BaseWindow):
     def __init__(self, user, db_session):
-        super().__init__()
+        super().__init__("profile")
         self.user = user
         self.db = db_session
         self.shop_svc = ShopService(self.db)
         self.ach_svc = AchievementService(self.db)
         self.setWindowTitle("Профиль")
-        self.setFixedSize(700, 700)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -74,43 +76,89 @@ class ProfileWindow(QWidget):
         self.setLayout(layout)
 
     def create_showcase_display(self):
-        """Отображает активную витрину с размещёнными артефактами."""
-        widget = QWidget()
-        layout = QHBoxLayout()
+        """Отображает активную витрину с размещёнными артефактами, стилизованную под материал."""
         active = self.shop_svc.get_active_showcase(self.user.id)
         if not active:
+            widget = QWidget()
+            layout = QHBoxLayout()
             layout.addWidget(QLabel("Нет активной витрины. Купите и выберите в настройках."))
             widget.setLayout(layout)
-            return widget
+            scroll = QScrollArea()
+            scroll.setWidget(widget)
+            scroll.setWidgetResizable(True)
+            scroll.setFixedHeight(120)
+            return scroll
+
+        # Определяем стиль витрины по названию
+        showcase_name = active.item_type.name
+        style_map = {
+            "Простая полка": """
+                background-color: #D2B48C;  /* дерево */
+                border: 2px solid #8B5A2B;
+                border-radius: 5px;
+            """,
+            "Стеклянный шкаф": """
+                background-color: rgba(200, 230, 255, 100);  /* полупрозрачное стекло */
+                border: 2px solid #ADD8E6;
+                border-radius: 8px;
+            """,
+            "Золотая витрина": """
+                background-color: #FFD700;
+                border: 3px solid #DAA520;
+                border-radius: 10px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FFD700, stop:1 #B8860B);
+            """
+        }
+        default_style = """
+            background-color: #F0F0F0;
+            border: 1px solid #808080;
+            border-radius: 5px;
+        """
+        showcase_style = style_map.get(showcase_name, default_style)
 
         capacity = active.item_type.capacity
         slots = self.shop_svc.get_showcase_slots(self.user.id)
-        # Рисуем витрину как рамку с иконками артефактов в слотах
-        # Для простоты используем горизонтальный ряд квадратов
-        for slot_num in range(1, capacity+1):
+
+        # Контейнер для слотов
+        container = QWidget()
+        container.setStyleSheet(showcase_style)
+        layout = QHBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        for slot_num in range(1, capacity + 1):
             slot_widget = QWidget()
-            slot_layout = QVBoxLayout()
             slot_widget.setFixedSize(80, 80)
-            slot_widget.setStyleSheet("border: 1px solid;")
+            slot_widget.setStyleSheet("background-color: rgba(255,255,255,0.7); border: 1px solid gray; border-radius: 5px;")
+            slot_layout = QVBoxLayout()
             if slot_num in slots:
                 art_inv = slots[slot_num]
-                icon_label = QLabel()
-                pix = QPixmap(art_inv.item_type.icon_url) if os.path.exists(art_inv.item_type.icon_url) else QPixmap()
-                if pix.isNull():
-                    # Заглушка: цветной круг с буквой
-                    icon_label.setText(art_inv.item_type.name[0])
-                    icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    icon_label.setStyleSheet("font-size: 20px; color: white;")
+                # Отображаем иконку артефакта или первую букву названия
+                if art_inv.item_type.icon_url:
+                    full_path = resource_path(art_inv.item_type.icon_url)
+                    if os.path.exists(full_path):
+                        pix = QPixmap(full_path).scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        icon_label = QLabel()
+                        icon_label.setPixmap(pix)
+                    else:
+                        icon_label = QLabel(art_inv.item_type.name[0])
+                        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        icon_label.setStyleSheet("font-size: 20px;")
                 else:
-                    icon_label.setPixmap(pix.scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                slot_layout.addWidget(icon_label)
+                    icon_label = QLabel(art_inv.item_type.name[0])
+                    icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    icon_label.setStyleSheet("font-size: 20px;")
+                slot_layout.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignCenter)
             else:
-                slot_layout.addWidget(QLabel("Пусто"), alignment=Qt.AlignmentFlag.AlignCenter)
+                empty_label = QLabel("Пусто")
+                empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                slot_layout.addWidget(empty_label)
             slot_widget.setLayout(slot_layout)
             layout.addWidget(slot_widget)
-        widget.setLayout(layout)
+
+        container.setLayout(layout)
         scroll = QScrollArea()
-        scroll.setWidget(widget)
+        scroll.setWidget(container)
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(120)
         return scroll
@@ -145,24 +193,32 @@ class ProfileWindow(QWidget):
     
     def open_settings(self):
         from gui.windows.profile_settings_window import ProfileSettingsWindow
-        self.settings_win = ProfileSettingsWindow(self.user, self.db)
-        self.settings_win.show()
+        current_geo = self.geometry()
         self.close()
+        self.settings_win = ProfileSettingsWindow(self.user, self.db)
+        self.settings_win.setGeometry(current_geo)
+        self.settings_win.show()
     
     def open_store(self):
         from gui.windows.store_window import StoreWindow
-        self.store = StoreWindow(self.user, self.db)
-        self.store.show()
+        current_geo = self.geometry()
         self.close()
+        self.store = StoreWindow(self.user, self.db)
+        self.store.setGeometry(current_geo)
+        self.store.show()
 
     def back_to_menu(self):
         from gui.windows.main_window import MainMenuWindow
-        self.menu = MainMenuWindow(self.user, self.db)
-        self.menu.show()
+        current_geo = self.geometry()
         self.close()
+        self.menu = MainMenuWindow(self.user, self.db)
+        self.menu.setGeometry(current_geo)
+        self.menu.show()
 
     def open_friends(self):
         from gui.windows.friends_window import FriendsWindow
-        self.friends_win = FriendsWindow(self.user, self.db)
-        self.friends_win.show()
+        current_geo = self.geometry()
         self.close()
+        self.friends_win = FriendsWindow(self.user, self.db)
+        self.friends_win.setGeometry(current_geo)
+        self.friends_win.show()

@@ -13,21 +13,22 @@ from PyQt6.QtCore import Qt
 
 from datetime import date, timedelta
 
+from gui.windows.base_window import BaseWindow
 from gui.windows.register_window import RegisterWindow
 from gui.windows.main_window import MainMenuWindow
 from services.auth_service import AuthService
 from services.leaderboard_service import LeaderboardService
 from gui.styles.theme_manager import apply_theme, get_user_theme
 
-class LoginWindow(QWidget):
+class LoginWindow(BaseWindow):
 
     def __init__(self, db_session):
-        super().__init__()
+        super().__init__("login")
 
         self.db_session = db_session
 
         self.setWindowTitle("Интерактивная химия | Вход")
-        self.setFixedSize(400, 300)
+        self.setMinimumSize(500, 400)
 
         self.init_ui()
 
@@ -54,6 +55,8 @@ class LoginWindow(QWidget):
         register_button.setFlat(True)
         register_button.clicked.connect(self.open_register)
 
+        layout.addStretch()
+        
         layout.addWidget(title)
         layout.addWidget(self.username_input)
         layout.addWidget(self.password_input)
@@ -65,9 +68,11 @@ class LoginWindow(QWidget):
         self.setLayout(layout)
 
     def open_register(self):
-        self.register_window = RegisterWindow(self.db_session)
-        self.register_window.show()
+        current_geo = self.geometry()
         self.close()
+        self.register_window = RegisterWindow(self.db_session)
+        self.register_window.setGeometry(current_geo)
+        self.register_window.show()
 
     def login(self):
         username = self.username_input.text()
@@ -100,8 +105,10 @@ class LoginWindow(QWidget):
             theme = get_user_theme(user.id, self.db_session)
             apply_theme(theme)
 
+            current_geo = self.geometry()
             self.close()
             self.main_window = MainMenuWindow(result, self.db_session)
+            self.main_window.setGeometry(current_geo)
             self.main_window.show()
 
         else:

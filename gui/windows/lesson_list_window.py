@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt
+from gui.windows.base_window import BaseWindow
 from database.db import SessionLocal
 from database.models.progress import UserLessonProgress
 from services.lesson_service import LessonService
@@ -11,9 +12,9 @@ from gui.windows.lesson_window import LessonWindow
 from database.models.content import LessonVersion
 import uuid
 
-class LessonListWindow(QWidget):
+class LessonListWindow(BaseWindow):
     def __init__(self, user, track, db_session):
-        super().__init__()
+        super().__init__("lesson_list")
         self.user = user
         self.track = track
         self.db = db_session
@@ -21,7 +22,7 @@ class LessonListWindow(QWidget):
         self.progress_service = ProgressService(self.db)
 
         self.setWindowTitle(f"Уроки: {track.name}")
-        self.setFixedSize(800, 500)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -144,12 +145,16 @@ class LessonListWindow(QWidget):
         return frame
 
     def open_lesson(self, lesson):
-        self.lesson_window = LessonWindow(self.user, self.track, lesson, self.db)
-        self.lesson_window.show()
+        current_geo = self.geometry()
         self.close()
+        self.lesson_window = LessonWindow(self.user, self.track, lesson, self.db)
+        self.lesson_window.setGeometry(current_geo)
+        self.lesson_window.show()
 
     def back_to_tracks(self):
         from gui.windows.track_selection_window import TrackSelectionWindow
-        self.tracks_window = TrackSelectionWindow(self.user, self.db)
-        self.tracks_window.show()
+        current_geo = self.geometry()
         self.close()
+        self.tracks_window = TrackSelectionWindow(self.user, self.db)
+        self.tracks_window.setGeometry(current_geo)
+        self.tracks_window.show()

@@ -13,18 +13,19 @@ from PyQt6.QtWidgets import (
 )
 
 from PyQt6.QtCore import Qt
+from gui.windows.base_window import BaseWindow
 
 
-class FriendsWindow(QWidget):
+class FriendsWindow(BaseWindow):
 
     def __init__(self, user, db_session):
-        super().__init__()
+        super().__init__("friends")
 
         self.user = user
         self.session = db_session
 
         self.setWindowTitle("Интерактивная химия | Друзья")
-        self.setFixedSize(600, 500)
+        self.setMinimumSize(500, 400)
 
         self.init_ui()
 
@@ -181,11 +182,11 @@ class FriendsWindow(QWidget):
 
     def back_to_profile(self):
         from gui.windows.profile_window import ProfileWindow
-
-        self.profile = ProfileWindow(self.user, self.session)
-        self.profile.show()
-
+        current_geo = self.geometry()
         self.close()
+        self.profile = ProfileWindow(self.user, self.session)
+        self.profile.setGeometry(current_geo)
+        self.profile.show()
 
     def send_request(self):
         username = self.search_input.text()

@@ -8,6 +8,7 @@ from PyQt6.QtGui import QPixmap
 from sqlalchemy import func
 
 from basedir import resource_path
+from gui.windows.base_window import BaseWindow
 from database.db import SessionLocal
 from services.lesson_service import LessonService
 from services.task_service import TaskService
@@ -23,9 +24,9 @@ from services.leaderboard_service import LeaderboardService
 from services.statistics_service import StatisticsService
 
 
-class LessonWindow(QWidget):
+class LessonWindow(BaseWindow):
     def __init__(self, user, track, lesson, db_session):
-        super().__init__()
+        super().__init__("lesson")
         self.user = user
         self.track = track
         self.lesson = lesson
@@ -44,7 +45,7 @@ class LessonWindow(QWidget):
         self.task_widgets = {}   # кеш виджетов заданий (опционально)
 
         self.setWindowTitle(f"Урок: {self.active_version.title}")
-        self.setFixedSize(800, 600)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -150,9 +151,11 @@ class LessonWindow(QWidget):
 
     def back_to_lessons(self):
         from gui.windows.lesson_list_window import LessonListWindow
-        self.lesson_list = LessonListWindow(self.user, self.track, self.db)
-        self.lesson_list.show()
+        current_geo = self.geometry()
         self.close()
+        self.lesson_list = LessonListWindow(self.user, self.track, self.db)
+        self.lesson_list.setGeometry(current_geo)
+        self.lesson_list.show()
 
     def setup_practice_tab(self):
         """Настраивает вкладку «Практика»."""
@@ -237,10 +240,25 @@ class LessonWindow(QWidget):
         )
 
         # Проверяем результат и даём обратную связь
-        if attempt.is_correct:
-            QMessageBox.information(self, "Результат", "Правильно!")
+        scoring = task.scoring_type
+        if scoring == 'binary':
+            if attempt.is_correct:
+                msg = "Правильно!"
+            else:
+                msg = "Неправильно!"
         else:
-            QMessageBox.warning(self, "Результат", "Неправильно!")
+            # Частичная или пропорциональная оценка
+            if attempt.score_earned == attempt.score_max:
+                msg = f"Правильно! +{attempt.score_earned} из {attempt.score_max} баллов."
+            elif attempt.score_earned > 0:
+                msg = f"Частично правильно: {attempt.score_earned} из {attempt.score_max} баллов."
+            else:
+                msg = f"Неправильно. 0 из {attempt.score_max} баллов."
+
+        if attempt.is_correct or (scoring != 'binary' and attempt.score_earned > 0):
+            QMessageBox.information(self, "Результат", msg)
+        else:
+            QMessageBox.warning(self, "Результат", msg)
 
         # Разрешаем переход к следующему только если это не последнее задание
         if idx < len(self.lesson_tasks) - 1:
@@ -261,108 +279,138 @@ class LessonWindow(QWidget):
             self.finish_btn.setEnabled(True)
 
     def finish_lesson(self):
-        """Завершает урок, если условия выполнены."""
-        # Проверяем, что теория просмотрена и выполнено >50% заданий
+        # Получаем прогресс
         track_progress = self.progress_service.get_or_create_track_progress(self.user.id, self.track.id)
         lesson_progress = self.progress_service.get_or_create_lesson_progress(
             track_progress.id, self.lesson.id
         )
+
+        # Если урок уже завершён – не даём XP повторно
+        if lesson_progress.status == 'completed':
+            QMessageBox.information(self, "Урок уже пройден", "Вы уже завершили этот урок.")
+            self.back_to_lessons()
+            return
+
+        # Проверяем теорию (если есть)
         if len(self.content['theory']) > 0 and not lesson_progress.theory_viewed:
             QMessageBox.warning(self, "Ошибка", "Сначала изучите теорию!")
             return
 
         total_tasks = len(self.lesson_tasks)
         if total_tasks == 0:
-            # Если нет заданий, урок считается пройденным после теории
+            # Нет заданий – урок считается пройденным без XP
             lesson_progress.status = 'completed'
             lesson_progress.completed_at = func.now()
-            # Начисляем XP и т.д.
             self.db.commit()
-            QMessageBox.information(self, "Урок завершён", "Поздравляем! Урок пройден.")
+            QMessageBox.information(self, "Урок завершён", "Теория изучена. Урок пройден.")
             self.back_to_lessons()
             return
 
-        # Подсчитываем количество успешно выполненных заданий
-        completed_tasks = self.db.query(TaskAttempt).filter(
-            TaskAttempt.lesson_progress_id == lesson_progress.id,
-            TaskAttempt.is_correct == True
-        ).count()
-        # Статистика по темам
-        stats_svc = StatisticsService(self.db)
-        for lesson_task, task in self.lesson_tasks:
-            # ищем последнюю попытку этого задания в рамках урока
-            last_attempt = self.db.query(TaskAttempt).filter(
-                TaskAttempt.user_id == self.user.id,
-                TaskAttempt.task_id == task.id,
-                TaskAttempt.lesson_progress_id == lesson_progress.id
-            ).order_by(TaskAttempt.created_at.desc()).first()
-            if last_attempt:
-                stats_svc.update_topic_stats(
-                    self.user.id,
-                    task.topic_tags,
-                    is_correct=last_attempt.is_correct,
-                    task_type=task.type
-                )
+        # Подсчитываем количество правильно выполненных заданий (или сумму баллов)
+        # Используем score_earned и score_total для более точной оценки (если есть partial)
+        lesson_attempts = self.db.query(TaskAttempt).filter(
+            TaskAttempt.lesson_progress_id == lesson_progress.id
+        ).all()
+        total_score_earned = sum(att.score_earned for att in lesson_attempts)
+        total_score_max = sum(att.score_max for att in lesson_attempts) if lesson_attempts else total_tasks
 
-        percent = (completed_tasks / total_tasks) * 100
-        if percent >= 50:
-            lesson_progress.status = 'completed'
-            lesson_progress.completed_at = func.now()
-            track_progress.total_xp += self.active_version.xp_reward
-            self.db.commit()
-
-            next_lesson = self.db.query(Lesson).filter(
-                Lesson.track_id == self.track.id,
-                Lesson.order_index > self.lesson.order_index
-            ).order_by(Lesson.order_index).first()
-            if next_lesson:
-                track_progress.current_lesson_index = next_lesson.order_index
-            else:
-                track_progress.current_lesson_index = self.lesson.order_index
-            self.db.commit()
-
-            # ---------- Геймификация ----------
-            currency_svc = CurrencyService(self.db)
-            # Награда за урок: монеты = XP/2, кристаллы = XP/10
-            coins_earned = self.active_version.xp_reward // 2
-            crystals_earned = max(1, self.active_version.xp_reward // 10)
-            currency_svc.add_coins(self.user.id, coins_earned)
-            currency_svc.add_crystals(self.user.id, crystals_earned)
-
-            # Достижения
-            achievement_svc = AchievementService(self.db)
-            achievement_svc.check_and_award(self.user.id, 'complete_lesson', {
-                'track_id': self.track.id,
-                'lesson_id': self.lesson.id,
-                'score_percent': percent
-            })
-            achievement_svc.check_and_award(self.user.id, 'count_tasks', {
-                'count': completed_tasks
-            })
-
-            # Челленджи
-            challenge_svc = ChallengeService(self.db)
-            challenge_svc.update_progress(self.user.id, 'complete_lesson', 1)
-
-            # Лидерборды
-            lb_svc = LeaderboardService(self.db)
-            lb_svc.update_entry(self.user.id, 'xp_total', self.active_version.xp_reward)
-            lb_svc.update_entry(self.user.id, 'xp_weekly', self.active_version.xp_reward)
-            lb_svc.update_entry(self.user.id, 'xp_daily', self.active_version.xp_reward)
-            lb_svc.update_entry(self.user.id, 'xp_monthly', self.active_version.xp_reward)
-            lb_svc.update_entry(self.user.id, 'tasks_completed', completed_tasks)
-
-            # Статистика тем (из тегов заданий)
-            stats_svc = StatisticsService(self.db)
-            all_stats = stats_svc.get_all_topic_stats(self.user.id)
-            if all_stats:
-                total_attempts = sum(s.total_attempts for s in all_stats)
-                correct_attempts = sum(s.correct_attempts for s in all_stats)
-                if total_attempts > 0:
-                    accuracy = correct_attempts / total_attempts * 100.0
-                    lb_svc.update_entry(self.user.id, 'accuracy_rate', accuracy)
-
-            QMessageBox.information(self, "Урок завершён", f"Урок пройден! Получено {self.active_version.xp_reward} XP.")
-            self.back_to_lessons()
+        # Вычисляем процент (можно использовать и по количеству правильных, и по баллам)
+        if total_score_max > 0:
+            percent = (total_score_earned / total_score_max) * 100
         else:
+            percent = 0.0
+
+        # Если процент ниже 50 – недостаточно для завершения
+        if percent < 50:
             QMessageBox.warning(self, "Недостаточно", f"Выполните хотя бы 50% заданий. Сейчас: {percent:.1f}%")
+            return
+
+        # Начисляем XP пропорционально успеху (но не более xp_reward)
+        xp_reward_full = self.active_version.xp_reward
+        xp_earned = int(xp_reward_full * (percent / 100))
+        # Минимум 1 XP, если есть хоть какой-то прогресс
+        if xp_earned == 0 and percent > 0:
+            xp_earned = 1
+
+        # Если трек в режиме повторения – XP не начисляем (или можно начислять уменьшенный, но пока 0)
+        if track_progress.is_repeating:
+            xp_earned = 0
+
+        # Обновляем прогресс
+        lesson_progress.status = 'completed'
+        lesson_progress.completed_at = func.now()
+        lesson_progress.score_earned = total_score_earned
+        lesson_progress.score_total = total_score_max
+
+        if xp_earned > 0:
+            track_progress.total_xp += xp_earned
+            # Дополнительно можно проверить, не превышает ли track_progress.total_xp сумму XP всех уроков трека
+            # Но оставим простое накопление, т.к. при повторном прохождении xp_earned = 0
+
+        self.db.commit()
+
+        # ---- Геймификация (награды) с учётом реально начисленного XP ----
+        currency_svc = CurrencyService(self.db)
+        # Награда за урок: монеты = XP_заработанные / 2, кристаллы = XP_заработанные / 10
+        coins_earned = xp_earned // 2
+        crystals_earned = max(1, xp_earned // 10) if xp_earned > 0 else 0
+        currency_svc.add_coins(self.user.id, coins_earned)
+        currency_svc.add_crystals(self.user.id, crystals_earned)
+
+        # Достижения и челленджи
+        achievement_svc = AchievementService(self.db)
+        achievement_svc.check_and_award(self.user.id, 'complete_lesson', {
+            'track_id': self.track.id,
+            'lesson_id': self.lesson.id,
+            'score_percent': percent
+        })
+        achievement_svc.check_and_award(self.user.id, 'count_tasks', {
+            'count': len([att for att in lesson_attempts if att.is_correct])
+        })
+
+        challenge_svc = ChallengeService(self.db)
+        challenge_svc.update_progress(self.user.id, 'complete_lesson', 1)
+
+        # Лидерборды обновляем с фактическим XP
+        lb_svc = LeaderboardService(self.db)
+        lb_svc.update_entry(self.user.id, 'xp_total', xp_earned)
+        lb_svc.update_entry(self.user.id, 'xp_weekly', xp_earned)
+        lb_svc.update_entry(self.user.id, 'xp_daily', xp_earned)
+        lb_svc.update_entry(self.user.id, 'xp_monthly', xp_earned)
+        lb_svc.update_entry(self.user.id, 'tasks_completed', len([att for att in lesson_attempts if att.is_correct]))
+
+        # Статистика тем
+        stats_svc = StatisticsService(self.db)
+        all_stats = stats_svc.get_all_topic_stats(self.user.id)
+        if all_stats:
+            total_attempts = sum(s.total_attempts for s in all_stats)
+            correct_attempts = sum(s.correct_attempts for s in all_stats)
+            if total_attempts > 0:
+                accuracy = correct_attempts / total_attempts * 100.0
+                lb_svc.update_entry(self.user.id, 'accuracy_rate', accuracy)
+
+        # Разблокируем следующий урок
+        next_lesson = self.db.query(Lesson).filter(
+            Lesson.track_id == self.track.id,
+            Lesson.order_index > self.lesson.order_index
+        ).order_by(Lesson.order_index).first()
+        if next_lesson:
+            track_progress.current_lesson_index = next_lesson.order_index
+            # Делаем следующий урок доступным
+            next_progress = self.db.query(UserLessonProgress).filter(
+                UserLessonProgress.user_track_progress_id == track_progress.id,
+                UserLessonProgress.lesson_id == next_lesson.id
+            ).first()
+            if next_progress:
+                next_progress.status = 'available'
+            else:
+                new_next = UserLessonProgress(
+                    user_track_progress_id=track_progress.id,
+                    lesson_id=next_lesson.id,
+                    status='available'
+                )
+                self.db.add(new_next)
+            self.db.commit()
+
+        QMessageBox.information(self, "Урок завершён", f"Вы набрали {total_score_earned} из {total_score_max} баллов.\nПолучено XP: {xp_earned}.")
+        self.back_to_lessons()

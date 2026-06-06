@@ -54,6 +54,24 @@ class ShopService:
             ItemType.category == category
         ).all()
 
+    def get_purchasable_items(self, user_id: uuid.UUID, category: str = None):
+        """
+        Возвращает список ShopItem, которые пользователь ещё не купил.
+        Если указана category, фильтрует по ней.
+        """
+        from database.models.user import UserInventory
+        # Подзапрос: item_type_id уже купленных пользователем предметов
+        subq = self.db.query(UserInventory.item_type_id).filter(
+            UserInventory.user_id == user_id
+        ).subquery()
+        query = self.db.query(ShopItem).filter(
+            ShopItem.is_active == True,
+            ~ShopItem.item_type_id.in_(subq)  # исключаем уже купленные
+        )
+        if category:
+            query = query.join(ItemType).filter(ItemType.category == category)
+        return query.all()
+
     def equip_item(self, user_id: uuid.UUID, inventory_id: int):
         # Загружаем предмет с подгрузкой item_type
         inv = self.db.query(UserInventory).options(joinedload(UserInventory.item_type)).filter(

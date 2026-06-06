@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt
 
+from gui.windows.base_window import BaseWindow
 from services.auth_service import AuthService
 
 import re
@@ -28,14 +29,14 @@ def validate_email(email: str) -> bool:
             return True
         return False
 
-class RegisterWindow(QWidget):
+class RegisterWindow(BaseWindow):
 
     def __init__(self, db_session):
-        super().__init__()
+        super().__init__("register")
         self.db_session = db_session
 
         self.setWindowTitle("Интерактивная химия | Регистрация")
-        self.setFixedSize(400, 350)
+        self.setMinimumSize(500, 400)
 
         self.init_ui()
 
@@ -69,6 +70,8 @@ class RegisterWindow(QWidget):
         back_button.setFlat(True)
         back_button.clicked.connect(self.back_to_login)
 
+        layout.addStretch()
+        
         layout.addWidget(title)
         layout.addWidget(self.username_input)
         layout.addWidget(self.email_input)
@@ -98,15 +101,19 @@ class RegisterWindow(QWidget):
         if success:
             from gui.windows.login_window import LoginWindow
             QMessageBox.information(self, "Success", message)
-            self.login_window = LoginWindow(db_session=self.db_session)
-            self.login_window.show()
+            current_geo = self.geometry()
             self.close()
+            self.login_window = LoginWindow(self.db_session, self.db_session)
+            self.login_window.setGeometry(current_geo)
+            self.login_window.show()
 
         else:
             QMessageBox.warning(self, "Error", message)
 
     def back_to_login(self):
         from gui.windows.login_window import LoginWindow
-        self.login_window = LoginWindow(db_session=self.db_session)
-        self.login_window.show()
+        current_geo = self.geometry()
         self.close()
+        self.login_window = LoginWindow(self.db_session)
+        self.login_window.setGeometry(current_geo)
+        self.login_window.show()

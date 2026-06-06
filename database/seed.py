@@ -17,11 +17,9 @@ import datetime
 
 def seed_shop_data(db):
     """Заполняет типы предметов и товары магазина."""
-    # Проверяем, есть ли уже предметы
     if db.query(ItemType).count() > 0:
-        return  # уже есть
+        return
 
-    # ---- Аватары ----
     avatars = [
         ("Атом", "avatar", "Аватар с изображением атома", "assets/shop/avatar_atom.png", 1),
         ("Колба", "avatar", "Аватар с колбой", "assets/shop/avatar_flask.png", 1),
@@ -35,7 +33,6 @@ def seed_shop_data(db):
         db.flush()
         db.add(ShopItem(item_type_id=item_type.id, price_coins=50, price_crystals=0, is_active=True))
 
-    # ---- Темы профиля ----
     themes = [
         ("Классическая", "profile_theme", "Стандартная тема оформления", "assets/shop/theme_classic.png", False),
         ("Кислотный жёлтый", "profile_theme", "Яркая жёлтая тема", "assets/shop/theme_yellow.png", True),
@@ -48,11 +45,7 @@ def seed_shop_data(db):
         db.flush()
         if purchasable:
             db.add(ShopItem(item_type_id=item_type.id, price_coins=100, price_crystals=0, is_active=True))
-        else:
-            # Классическая тема не появляется в магазине, но тип предмета существует
-            pass
-        
-    # ---- Витрины ----
+
     showcases = [
         ("Простая полка", "showcase", "Деревянная полка на 2 предмета", "assets/shop/showcase_simple.png", 2),
         ("Стеклянный шкаф", "showcase", "Стеклянная витрина на 3 предмета", "assets/shop/showcase_glass.png", 3),
@@ -64,7 +57,6 @@ def seed_shop_data(db):
         db.flush()
         db.add(ShopItem(item_type_id=item_type.id, price_coins=200, price_crystals=10, is_active=True))
 
-    # ---- Артефакты ----
     artifacts = [
         ("Колба Эрленмейера", "artifact", "Коническая колба для титрования", "assets/shop/artifact_erlenmeyer.png"),
         ("Мерный цилиндр", "artifact", "Точный измерительный прибор", "assets/shop/artifact_cylinder.png"),
@@ -85,7 +77,6 @@ def seed_shop_data(db):
     print("Магазин заполнен.")
 
 def seed_test_user(db):
-    """Создаёт тестового пользователя со всем открытым контентом, валютой и достижениями."""
     test_username = "0"
     test_password = "0"
     existing = db.query(User).filter(User.username == test_username).first()
@@ -94,7 +85,6 @@ def seed_test_user(db):
         db.commit()
         print("Удалён старый тестовый пользователь.")
 
-    # Хешируем пароль
     hashed_pw = AuthService.hash_password(test_password)
     user = User(
         username=test_username,
@@ -109,12 +99,10 @@ def seed_test_user(db):
     db.refresh(user)
     user_id = user.id
 
-    # Кошелёк с кучей валют
     wallet = UserCurrency(user_id=user_id, coins=99999, crystals=9999)
     db.add(wallet)
     db.commit()
 
-    # Проходим все треки и все уроки
     tracks = db.query(Track).filter(Track.is_published == True).all()
     for track in tracks:
         lesson_count = len(track.lessons)
@@ -129,7 +117,7 @@ def seed_test_user(db):
             current_lesson_index=lesson_count - 1
         )
         db.add(tp)
-        db.flush()  # чтобы получить tp.id
+        db.flush()
 
         for lesson in track.lessons:
             version = lesson.versions[0] if lesson.versions else None
@@ -151,7 +139,6 @@ def seed_test_user(db):
             db.add(lp)
     db.commit()
 
-    # Все достижения
     achievements = db.query(Achievement).all()
     for ach in achievements:
         ua = UserAchievement(
@@ -165,14 +152,12 @@ def seed_test_user(db):
     db.commit()
 
     lb = LeaderboardService(db)
-    # Имитируем накопленный XP по периодам
     lb.update_entry(user.id, 'xp_total', 1500)
     lb.update_entry(user.id, 'xp_weekly', 300)
     lb.update_entry(user.id, 'xp_daily', 50)
     lb.update_entry(user.id, 'xp_monthly', 800)
     lb.update_entry(user.id, 'tasks_completed', 44)
     lb.update_entry(user.id, 'accuracy_rate', 87.5)
-    # Стрик
     user.current_streak = 15
     user.longest_streak = 30
     lb.update_entry(user.id, 'current_streak', user.current_streak)
@@ -181,7 +166,6 @@ def seed_test_user(db):
     db.commit()
 
 def seed_achievements(db):
-    """Создаёт базовый набор достижений."""
     if db.query(Achievement).count() > 0:
         return
     achievements_data = [
@@ -228,14 +212,13 @@ def seed_data():
         db.close()
         return
 
-    # ======================= ТРЕКИ =======================
+    # ТРЕКИ
     track8 = Track(name="Химия. 8 класс", description="Базовый курс химии для 8 класса", is_published=True)
     track9 = Track(name="Химия. 9 класс", description="Продвинутый курс для 9 класса", is_published=True)
     db.add_all([track8, track9])
     db.commit()
 
-    # ======================= ГЕНЕРАТОРЫ ЗАДАНИЙ =======================
-    # Generator for 'choice'
+    # ГЕНЕРАТОРЫ ЗАДАНИЙ
     gen_choice_8 = TaskGenerator(
         type='choice',
         template_data={
@@ -315,7 +298,6 @@ def seed_data():
             ("tasks_completed", "Выполнено заданий", "tasks_completed", "global", "daily"),
             ("accuracy_rate", "Точность решений", "accuracy_rate", "global", "daily"),
             ("current_streak", "Текущий стрик", "current_streak", "global", "daily"),
-            # при желании можно добавить те же метрики с scope='friends'
             ("xp_weekly_friends", "XP за неделю (друзья)", "xp_weekly", "friends", "weekly"),
             ("tasks_completed_friends", "Заданий за день (друзья)", "tasks_completed", "friends", "daily"),
         ]
@@ -326,8 +308,7 @@ def seed_data():
             ))
         db.commit()
 
-    # ======================= УРОКИ И ТЕОРИЯ =======================
-    # Вспомогательная функция для создания полного урока
+    # Вспомогательная функция создания урока
     def create_lesson(track, order, title, theory_blocks=None, tasks_data=None, xp=50, est_time=30, is_test=False):
         lesson = Lesson(track_id=track.id, order_index=order)
         db.add(lesson)
@@ -344,9 +325,7 @@ def seed_data():
         db.add(version)
         db.flush()
 
-        # Теория, если не тест
         if not is_test and theory_blocks:
-            # Создаём одну запись Theory, содержащую все блоки
             theory = Theory(
                 data=json.dumps({"blocks": theory_blocks}),
                 topic_tags=[title],
@@ -357,15 +336,12 @@ def seed_data():
             lt = LessonTheory(lesson_id=lesson.id, theory_id=theory.id, order_index=1, is_required=True)
             db.add(lt)
 
-        # Задания
         if tasks_data:
             for idx, td in enumerate(tasks_data):
-                # Задание может быть создано заранее или создаём сейчас
                 if 'task' in td:
                     task = td['task']
                 else:
                     task = create_task_from_data(td)
-                # Связываем с уроком
                 lt = LessonTask(
                     lesson_id=lesson.id,
                     task_id=task.id,
@@ -377,7 +353,6 @@ def seed_data():
         return lesson
 
     def create_task_from_data(td):
-        """Создаёт Task и, если нужно, варианты, на основе словаря td"""
         task = Task(
             type=td['type'],
             source_type=td.get('source_type', 'static'),
@@ -404,10 +379,7 @@ def seed_data():
         db.commit()
         return task
 
-    # ========================= ТЕОРИЯ И ЗАДАНИЯ ДЛЯ УРОКОВ =========================
-    # Для сокращения дублирования блоки теории и данные заданий будем описывать в структурах
-
-    # 8 КЛАСС
+    # ======================= 8 КЛАСС =======================
     # Урок 1
     create_lesson(track8, 0, "Предмет химии. Вещества",
         theory_blocks=[
@@ -443,7 +415,7 @@ def seed_data():
         ]
     )
 
-    # Урок 3
+    # Урок 3 (ионная связь) — match с частичной оценкой
     create_lesson(track8, 2, "Ионная химическая связь",
         theory_blocks=[
             {"type": "text", "content": "Ионная связь образуется между металлами и неметаллами за счёт передачи электронов от металла к неметаллу. При этом образуются положительные и отрицательные ионы, которые притягиваются. Например, в хлориде натрия (NaCl) атом натрия отдаёт один электрон атому хлора."},
@@ -455,7 +427,7 @@ def seed_data():
                 {"variant_data": {"question_text": "Ионная связь характерна для пары Na и Cl."}, "correct_answer": {"answer": True}},
                 {"variant_data": {"question_text": "Связь в молекуле H₂O — ионная."}, "correct_answer": {"answer": False}},
             ]},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 3, 'variants': [
                 {"variant_data": {
                     "left_items": ["NaCl", "MgO", "KBr"],
                     "right_items": ["хлорид натрия", "оксид магния", "бромид калия"]
@@ -499,14 +471,14 @@ def seed_data():
         ]
     )
 
-    # Урок 6 (кислоты и основания)
+    # Урок 6 (кислоты и основания) — match с частичной оценкой
     create_lesson(track8, 5, "Кислоты и основания",
         theory_blocks=[
             {"type": "text", "content": "Кислоты — это электролиты, которые при диссоциации образуют катионы водорода и анионы кислотного остатка. Примеры: HCl, H₂SO₄, HNO₃. Основания — электролиты, образующие гидроксид-анионы OH⁻: NaOH, Ca(OH)₂."},
             {"type": "image", "src": "assets/images/acid_base_reaction.png", "caption": "Реакция нейтрализации"}
         ],
         tasks_data=[
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 3, 'variants': [
                 {"variant_data": {"left_items": ["HCl", "NaOH", "H₂SO₄"], "right_items": ["соляная кислота", "гидроксид натрия", "серная кислота"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2}}}
             ]},
             {'type': 'true_false', 'variants': [
@@ -531,7 +503,7 @@ def seed_data():
         ]
     )
 
-    # Урок 8 — тест (только задания)
+    # Урок 8 — тест (match с частичной оценкой)
     create_lesson(track8, 7, "Тест по классам неорганических веществ",
         is_test=True, xp=80, est_time=20,
         tasks_data=[
@@ -542,7 +514,7 @@ def seed_data():
             {'type': 'choice', 'variants': [
                 {"variant_data": {"question_text": "Какое вещество является основанием?", "options": ["HCl", "NaOH", "NaCl", "CO₂"]}, "correct_answer": {"answer": 1}},
             ]},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 3, 'variants': [
                 {"variant_data": {"left_items": ["CO₂", "NaOH", "NaCl"], "right_items": ["кислотный оксид", "основание", "соль"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2}}}
             ]},
             {'type': 'fill_blank', 'variants': [
@@ -621,21 +593,21 @@ def seed_data():
         ]
     )
 
-    # Итоговый тест 8 класса (15)
+    # Итоговый тест 8 класса (15) — match с частичной оценкой
     create_lesson(track8, 14, "Итоговый тест за 8 класс",
         is_test=True, xp=200, est_time=40,
         tasks_data=[
             {'type': 'choice', 'source_type': 'generated', 'generator_id': gen_choice_8.id},
             {'type': 'balance_equation', 'source_type': 'generated', 'generator_id': gen_balance.id},
             {'type': 'calculation', 'source_type': 'generated', 'generator_id': gen_calc.id},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 4, 'variants': [
                 {"variant_data": {"left_items": ["H₂O", "NaCl", "CO₂", "CaO"], "right_items": ["вода", "поваренная соль", "углекислый газ", "негашеная известь"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2, "3": 3}}}
             ]},
         ]
     )
 
-    # Продолжим с 9 классом (также подробно)
-    # Урок 1 (9 класс) Периодический закон
+    # ======================= 9 КЛАСС =======================
+    # Урок 1
     create_lesson(track9, 0, "Периодический закон и таблица Менделеева",
         theory_blocks=[
             {"type": "text", "content": "Периодический закон, открытый Д.И. Менделеевым, гласит: свойства химических элементов и их соединений находятся в периодической зависимости от заряда ядра атома. Таблица Менделеева — графическое отображение закона."},
@@ -689,12 +661,12 @@ def seed_data():
         ]
     )
 
-    # Тест по металлам (5)
+    # Тест по металлам (5) — match с частичной оценкой
     create_lesson(track9, 4, "Тест по металлам",
         is_test=True, xp=100, est_time=25,
         tasks_data=[
             {'type': 'choice', 'source_type': 'generated', 'generator_id': gen_choice_9.id},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 4, 'variants': [
                 {"variant_data": {"left_items": ["Na", "Fe", "Cu", "Zn"], "right_items": ["щелочной металл", "ферромагнетик", "красный металл", "алюминиевая группа"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2, "3": 3}}}
             ]},
             {'type': 'balance_equation', 'variants': [
@@ -763,13 +735,13 @@ def seed_data():
         ]
     )
 
-    # Тест по неметаллам и кинетике (11)
+    # Тест по неметаллам и кинетике (11) — match с частичной оценкой
     create_lesson(track9, 10, "Тест по неметаллам и кинетике",
         is_test=True, xp=100, est_time=25,
         tasks_data=[
             {'type': 'balance_equation', 'source_type': 'generated', 'generator_id': gen_balance.id},
             {'type': 'choice', 'source_type': 'generated', 'generator_id': gen_choice_9.id},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 4, 'variants': [
                 {"variant_data": {"left_items": ["Cl₂", "H₂", "N₂", "O₂"], "right_items": ["желто-зеленый газ", "бесцветный горючий газ", "инертный газ", "поддерживает горение"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2, "3": 3}}}
             ]},
         ]
@@ -788,7 +760,7 @@ def seed_data():
         ]
     )
 
-    # Урок 13 (ионные реакции)
+    # Урок 13 (реакции ионного обмена)
     create_lesson(track9, 12, "Реакции ионного обмена",
         theory_blocks=[
             {"type": "text", "content": "Реакции ионного обмена идут до конца, если образуется осадок, газ или малодиссоциирующее вещество (вода). Например, AgNO₃ + NaCl → AgCl↓ + NaNO₃."}
@@ -813,14 +785,14 @@ def seed_data():
         ]
     )
 
-    # Итоговый тест 9 класса
+    # Итоговый тест 9 класса (14) — match с частичной оценкой
     create_lesson(track9, 14, "Итоговый тест за 9 класс",
         is_test=True, xp=200, est_time=40,
         tasks_data=[
             {'type': 'choice', 'source_type': 'generated', 'generator_id': gen_choice_9.id},
             {'type': 'balance_equation', 'source_type': 'generated', 'generator_id': gen_balance.id},
             {'type': 'calculation', 'source_type': 'generated', 'generator_id': gen_calc.id},
-            {'type': 'match', 'variants': [
+            {'type': 'match', 'scoring_type': 'partial', 'max_score': 4, 'variants': [
                 {"variant_data": {"left_items": ["Fe", "Cl₂", "NaOH", "H₂SO₄"], "right_items": ["металл", "неметалл", "щелочь", "кислота"]}, "correct_answer": {"matches": {"0": 0, "1": 1, "2": 2, "3": 3}}}
             ]},
             {'type': 'classify', 'variants': [
@@ -835,6 +807,7 @@ def seed_data():
     seed_test_user(db)
 
     print("Реальный контент успешно добавлен.")
+    db.close()
 
 if __name__ == "__main__":
     seed_data()

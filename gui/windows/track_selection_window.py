@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame, QMessageBox
 )
 from PyQt6.QtCore import Qt
+from gui.windows.base_window import BaseWindow
 from database.db import SessionLocal
 from database.models.progress import UserTrackProgress
 from services.track_service import TrackService
@@ -11,16 +12,16 @@ from gui.windows.lesson_list_window import LessonListWindow
 from gui.windows.main_window import MainMenuWindow
 import uuid
 
-class TrackSelectionWindow(QWidget):
+class TrackSelectionWindow(BaseWindow):
     def __init__(self, user, db_session):
-        super().__init__()
+        super().__init__("track_selection")
         self.user = user
         self.db = db_session
         self.track_service = TrackService(self.db)
         self.progress_service = ProgressService(self.db)
 
         self.setWindowTitle("Выбор трека")
-        self.setFixedSize(600, 400)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -113,11 +114,15 @@ class TrackSelectionWindow(QWidget):
         self.open_lesson_list(track)
 
     def open_lesson_list(self, track):
-        self.lesson_list_window = LessonListWindow(self.user, track, self.db)
-        self.lesson_list_window.show()
+        current_geo = self.geometry()
         self.close()
+        self.lesson_list_window = LessonListWindow(self.user, track, self.db)
+        self.lesson_list_window.setGeometry(current_geo)
+        self.lesson_list_window.show()
 
     def back_to_menu(self):
-        self.menu = MainMenuWindow(self.user, self.db)
-        self.menu.show()
+        current_geo = self.geometry()
         self.close()
+        self.menu = MainMenuWindow(self.user, self.db)
+        self.menu.setGeometry(current_geo)
+        self.menu.show()

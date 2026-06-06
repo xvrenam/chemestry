@@ -3,19 +3,20 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QComboBox, QMessageBox
 )
 from PyQt6.QtCore import Qt
+from gui.windows.base_window import BaseWindow
 from services.shop_service import ShopService
 from services.achievement_service import AchievementService
 from database.models.user import ItemType
 
-class ProfileSettingsWindow(QWidget):
+class ProfileSettingsWindow(BaseWindow):
     def __init__(self, user, db_session):
-        super().__init__()
+        super().__init__("profile_settings")
         self.user = user
         self.db = db_session
         self.shop_svc = ShopService(self.db)
         self.ach_svc = AchievementService(self.db)
         self.setWindowTitle("Настройки профиля")
-        self.setFixedSize(600, 500)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -260,6 +261,8 @@ class ProfileSettingsWindow(QWidget):
 
     def back_to_profile(self):
         from gui.windows.profile_window import ProfileWindow
-        self.profile = ProfileWindow(self.user, self.db)
-        self.profile.show()
+        current_geo = self.geometry()
         self.close()
+        self.profile = ProfileWindow(self.user, self.db)
+        self.profile.setGeometry(current_geo)
+        self.profile.show()

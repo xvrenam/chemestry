@@ -4,19 +4,20 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from datetime import date, timedelta
+from gui.windows.base_window import BaseWindow
 from services.leaderboard_service import LeaderboardService
 from services.friends_service import FriendsService
 
-class LeaderboardWindow(QWidget):
+class LeaderboardWindow(BaseWindow):
     def __init__(self, user, db_session):
-        super().__init__()
+        super().__init__("leaderboard")
         self.user = user
         self.db = db_session
         self.leaderboard_svc = LeaderboardService(self.db)
         self.friends_svc = FriendsService()
 
         self.setWindowTitle("Доска почёта")
-        self.setFixedSize(700, 500)
+        self.setMinimumSize(500, 400)
         self.init_ui()
 
     def init_ui(self):
@@ -140,6 +141,8 @@ class LeaderboardWindow(QWidget):
 
     def back_to_menu(self):
         from gui.windows.main_window import MainMenuWindow
-        self.menu = MainMenuWindow(self.user, self.db)
-        self.menu.show()
+        current_geo = self.geometry()
         self.close()
+        self.menu = MainMenuWindow(self.user, self.db)
+        self.menu.setGeometry(current_geo)
+        self.menu.show()
